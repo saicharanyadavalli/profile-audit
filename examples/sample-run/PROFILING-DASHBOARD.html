@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -408,12 +408,18 @@
       background-color: var(--bg-surface);
       color: var(--text-secondary);
       transition: all 150ms ease;
+      cursor: pointer;
     }
 
     .icon-btn:hover {
       color: var(--text-primary);
       background-color: var(--bg-card-hover);
       border-color: var(--border-default);
+    }
+
+    .icon-btn:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
     }
 
     :root:not([data-theme="dark"]) .icon-sun { display: none; }
@@ -1313,6 +1319,7 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity 250ms ease;
+      cursor: pointer;
     }
 
     .drawer-backdrop.open {
@@ -1332,13 +1339,24 @@
       box-shadow: var(--shadow-drawer);
       z-index: 100;
       transform: translateX(100%);
-      transition: transform 250ms ease;
+      transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);
       display: flex;
       flex-direction: column;
     }
 
     .detail-drawer.open {
       transform: translateX(0);
+    }
+
+    #drawer-close-btn {
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    #drawer-close-btn:hover {
+      color: var(--impact-critical);
+      background-color: var(--impact-critical-bg);
+      border-color: var(--impact-critical-border);
     }
 
     .drawer-header {
@@ -2528,7 +2546,7 @@
   </main>
 
   <!-- Slide-Over Inspector Drawer & Modal Backdrop -->
-  <div id="inspector-backdrop" class="drawer-backdrop" aria-hidden="true"></div>
+  <div id="inspector-backdrop" class="drawer-backdrop" aria-hidden="true" onclick="window.__PROFILE_AUDIT_REPORT__ ? window.__PROFILE_AUDIT_REPORT__.closeInspectorDrawer() : null"></div>
 
   <aside id="inspector-drawer" class="detail-drawer" aria-labelledby="drawer-function-name" aria-modal="true" role="dialog" aria-hidden="true">
     <div class="drawer-header">
@@ -2544,7 +2562,7 @@
           <span id="drawer-location-text">path/to/file.py:42</span>
         </div>
       </div>
-      <button type="button" id="drawer-close-btn" class="icon-btn" aria-label="Close inspector">
+      <button type="button" id="drawer-close-btn" class="icon-btn" aria-label="Close inspector" onclick="window.__PROFILE_AUDIT_REPORT__ ? window.__PROFILE_AUDIT_REPORT__.closeInspectorDrawer() : null">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
     </div>
@@ -2840,6 +2858,54 @@
             window.print();
           });
         }
+
+        /* Setup Inspector Drawer Controls */
+        var drawerCloseBtn = document.getElementById('drawer-close-btn');
+        if (drawerCloseBtn) {
+          drawerCloseBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeInspectorDrawer();
+          });
+        }
+
+        var drawerBackdrop = document.getElementById('inspector-backdrop');
+        if (drawerBackdrop) {
+          drawerBackdrop.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeInspectorDrawer();
+          });
+        }
+
+        /* Keyboard Accessibility & Focus Trap for Inspector Drawer */
+        document.addEventListener('keydown', function (e) {
+          var drawer = document.getElementById('inspector-drawer');
+          if (!drawer || !drawer.classList.contains('open')) return;
+
+          if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
+            e.preventDefault();
+            closeInspectorDrawer();
+            return;
+          }
+
+          if (e.key === 'Tab' || e.keyCode === 9) {
+            var focusable = drawer.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+            if (!focusable || !focusable.length) return;
+            var first = focusable[0];
+            var last = focusable[focusable.length - 1];
+
+            if (e.shiftKey) {
+              if (document.activeElement === first || !drawer.contains(document.activeElement)) {
+                e.preventDefault();
+                last.focus();
+              }
+            } else {
+              if (document.activeElement === last || !drawer.contains(document.activeElement)) {
+                e.preventDefault();
+                first.focus();
+              }
+            }
+          }
+        });
 
         /* Initialize Badge Counts */
         var badgeWf = document.getElementById('tab-badge-workflows');
@@ -3626,6 +3692,8 @@
         if (nextBtn) nextBtn.disabled = state.functions.currentPage >= totalPages;
       }
 
+      var lastFocusedElement = null;
+
       function openInspectorDrawer(unitId, findingId) {
         var unit = state.functions.all.find(function (u) { return u.unit_id === unitId; });
         if (!unit) {
@@ -3642,6 +3710,8 @@
         var drawer = document.getElementById('inspector-drawer');
         var backdrop = document.getElementById('inspector-backdrop');
         if (!drawer || !backdrop) return;
+
+        lastFocusedElement = document.activeElement;
 
         /* Header */
         var elName = document.getElementById('drawer-function-name');
@@ -3904,7 +3974,20 @@
         backdrop.setAttribute('aria-hidden', 'false');
 
         var closeBtn = document.getElementById('drawer-close-btn');
-        if (closeBtn) closeBtn.focus();
+        if (closeBtn) {
+          closeBtn.onclick = function (e) {
+            e.preventDefault();
+            closeInspectorDrawer();
+          };
+          closeBtn.focus();
+        }
+
+        if (backdrop) {
+          backdrop.onclick = function (e) {
+            e.preventDefault();
+            closeInspectorDrawer();
+          };
+        }
       }
 
       function closeInspectorDrawer() {
@@ -3917,6 +4000,12 @@
         if (backdrop) {
           backdrop.classList.remove('open');
           backdrop.setAttribute('aria-hidden', 'true');
+        }
+        if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+          try {
+            lastFocusedElement.focus();
+          } catch (e) {}
+          lastFocusedElement = null;
         }
       }
 
@@ -4775,6 +4864,8 @@
           document.documentElement.setAttribute('data-theme', savedTheme);
         } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
           document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
         }
       } catch (e) {}
 

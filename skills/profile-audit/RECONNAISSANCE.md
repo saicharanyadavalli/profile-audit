@@ -22,17 +22,29 @@ Start sub-agents in parallel if supported, otherwise execute each track sequenti
 
 #### Track A: Entry Points & Routing Reconnaissance
 - Scan router definitions, controller classes, route decorators, CLI argument parsers, and job queues.
-- Enumerate every external interface:
-  * HTTP endpoints (method, path, handler function, file, line).
-  * WebSocket handlers and RPC methods.
-  * Background worker tasks, message queue consumers, and scheduled cron jobs.
-- Map each entry point to an identifiable workflow name (e.g., `user_signup`, `product_search`, `order_checkout`).
+- Enumerate every external interface without exception (target 100% full-surface discovery):
+  * **HTTP Endpoints**: Method (GET, POST, PUT, PATCH, DELETE), path pattern, handler function, file, line.
+  * **Request Contract Cataloging**: For every discovered endpoint, extract:
+    - **Path Parameters**: Variable names in the path (e.g., `/:id`, `/:userId`, `/:friendshipId`, `{item_id}`).
+    - **Authentication & Authorization Gates**: Required headers or middleware (`requireAuth`, `optionalAuth`, `@login_required`, Bearer token, session cookie, API key, admin role).
+    - **Query Parameters**: Filter, search, and pagination parameters (`?page=`, `?limit=`, `?q=`, `?search=`).
+    - **Request Body Schemas**: Required vs. optional JSON fields, data types, and constraints extracted from validation schemas (e.g. Zod, Joi, express-validator, Pydantic, Marshmallow) or controller body destructuring (e.g. `const { username, email, password } = req.body`).
+  * **WebSocket Handlers & RPC Methods**: Event names, message payloads, connection endpoints.
+  * **Background Worker Tasks & Message Consumers**: Queue names, scheduled cron jobs, payload structures.
+- **Existing Test & Verification Suite Discovery**:
+  * Inspect package scripts (`package.json`, `Makefile`), `tests/`, `scripts/`, `e2e/`, `pytest`, `cargo test`, `go test`.
+  * Catalog existing API test scripts (e.g. `scripts/test-api.js`, `tests/e2e/runner.js`), integration test suites, and seeder scripts that already make HTTP requests or invoke endpoints.
+  * Document these existing scripts in `.work/architecture.json` and reconnaissance notes; they provide validated payload schemas, authentication flows, and working parameter examples that can be leveraged directly for Phase 2 driver synthesis.
+- Map each entry point to an identifiable workflow name (e.g., `user_signup`, `product_search`, `order_checkout`, or standardized endpoint workflows like `ep_posts_create`, `ep_users_get_profile`).
 
 #### Track B: Data Layer & Persistence Mapping
 - Inspect database connection mechanisms: pooling configurations, pool min/max sizes, connection timeouts, and connection lifecycles.
 - Catalog data models, table definitions, foreign keys, and indexes.
 - Identify queries executed within transactions, schema migrations, and ORM relationship loading settings (lazy vs. eager).
 - Flag tables or query patterns lacking indexes on frequently filtered or joined columns.
+- **Catalog Valid Entity Identifiers & Seed Data**:
+  * Inspect database seeding scripts (`seed.js`, `seeds/`, `fixtures/`) or initial database state.
+  * Catalog valid, existing entity IDs (e.g. valid test `user_id`, `post_id`, `group_id`). Drivers in Phase 2 require these IDs for path parameters (`/:id`, `/:userId`) to ensure requests execute against real data instead of failing immediately with 404 Not Found.
 
 #### Track C: External Calls & Outbound Services
 - Identify outbound network clients (HTTP client libraries, gRPC clients, cloud SDKs, third-party APIs, webhooks).
@@ -78,7 +90,7 @@ Scan the codebase for the 8 known latency and throughput anti-patterns:
 ### Prompt 1: Entry Points Reconnaissance Sub-Agent
 ```text
 You are an entry point reconnaissance sub-agent for profile-audit.
-Role: Discover and catalog all external entry points (HTTP routes, RPCs, CLI commands, queue consumers, background jobs) in the repository.
+Role: Discover and catalog all external entry points (HTTP routes, RPCs, CLI commands, queue consumers, background jobs) in the repository, along with their request contracts and existing test harnesses.
 
 Inputs:
 - REPO_PATH: Path to the target repository.
@@ -87,20 +99,39 @@ Inputs:
 Strict Rules:
 1. Do not modify any files in the repository.
 2. Read router configurations, route decorators, controller definitions, worker queues, and command parsers.
-3. Do not fabricate file paths or line numbers; verify against actual source files.
+3. For every HTTP route, extract its contract: HTTP method, path parameter variables (e.g. :id, :userId), auth requirements (e.g. requireAuth, public), expected query parameters, and required request body fields (from validators or controller body destructuring).
+4. Discover existing test scripts (e.g. package.json scripts, scripts/test-api.js, tests/e2e/runner.js) that invoke these endpoints.
+5. Do not fabricate file paths or line numbers; verify against actual source files.
 
 Output Format:
-Return a JSON array of discovered unit objects:
-[
-  {
-    "id": "unit-001",
-    "kind": "endpoint",
-    "name": "POST /api/v1/signup",
-    "file": "src/controllers/auth.py",
-    "line": 42,
-    "workflows": ["user_signup"]
-  }
-]
+Return a JSON object:
+{
+  "units": [
+    {
+      "id": "unit-001",
+      "kind": "endpoint",
+      "name": "POST /api/v1/signup",
+      "file": "src/controllers/auth.py",
+      "line": 42,
+      "workflows": ["user_signup"],
+      "contract": {
+        "method": "POST",
+        "path": "/api/v1/signup",
+        "auth": "public",
+        "path_params": [],
+        "query_params": [],
+        "body_fields": ["username", "email", "password"]
+      }
+    }
+  ],
+  "existing_test_scripts": [
+    {
+      "file": "backend/scripts/test-api.js",
+      "type": "api_smoke_suite",
+      "description": "Comprehensive integration script testing auth, posts, and friends"
+    }
+  ]
+}
 
 Error Handling & Stop Condition:
 If a router definition references missing files or external libraries, note the library in "name" and omit "line" or set to 1. Stop when all entry point files have been scanned.

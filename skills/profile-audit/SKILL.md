@@ -94,7 +94,7 @@ Load each phase instruction file only when that specific phase starts:
 - **Action**: Read `DRIVERS-AND-MEASUREMENT.md` section on Drivers.
 - **Scope**: Author repeatable per-workflow driver scripts and seed realistic test data volumes (hundreds or thousands of records, not empty tables).
 - **Execution**: Author drivers in parallel if supported.
-- **Done Condition**: Repeatable driver scripts ready for all key application workflows.
+- **Done Condition**: Repeatable driver suite ready covering all discovered application entry points and key workflows (aiming for 100% endpoint coverage).
 
 ### Phase 3: Sequential Measurement
 - **Action**: Read `DRIVERS-AND-MEASUREMENT.md` section on Measurement.

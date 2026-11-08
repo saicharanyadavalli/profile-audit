@@ -17,28 +17,83 @@ This specification covers Phase 2 (Driver Authoring) and Phase 3 (Deterministic 
 
 ### Phase 2: Driver Authoring & Realistic Seeding
 
-#### Step 1: Workflow Identification and Grouping
-- Group cataloged entry points into distinct, representative workflows:
-  * Authentication workflows (e.g., `user_signup`, `user_login`).
-  * Read and search workflows (e.g., `item_listing`, `product_search`, `dashboard_view`).
-  * Mutation and write workflows (e.g., `checkout_order`, `submit_review`, `update_profile`).
-  * Background workflows (e.g., `process_batch_queue`, `nightly_cleanup`).
+#### Step 1: 100% Full-Surface Coverage Strategy & Two-Tier Drivers
+A critical failure mode of performance audits is cherry-picking 3 to 6 read-only queries and leaving 90%+ of cataloged routes marked as `not_exercised`. A full audit must systematically cover every external interface discovered during Reconnaissance.
 
-#### Step 2: Realistic Data Seeding
+To achieve complete coverage without manual script proliferation, employ a **Two-Tier Driver Strategy**:
+- **Tier 1: Comprehensive Full-Surface Driver Suite (Mandatory)**:
+  * A single, unified automated test runner or driver harness script (`driver_suite.mjs` or `driver_suite.py`) that systematically iterates over **ALL** cataloged HTTP routes and entry points in `.work/coverage-ledger.json`.
+  * Target: **100% of discovered endpoints exercised**.
+  * Executes each endpoint sequentially through its real HTTP handler, exercising authentication, validation, business logic, ORM/SQL execution, and response serialization.
+- **Tier 2: Deep Multi-Step User Journeys (Selective)**:
+  * In addition to individual endpoint sweeps, model 3 to 5 realistic compound user journeys (e.g., `user_registration_and_onboarding`, `create_post_like_and_comment_thread`, `search_add_friend_and_send_message`).
+  * Measures compound latency, transactional interaction, and cross-table database contention.
+
+#### Step 2: Exploiting Existing Test Suites & Verification Runners
+Before authoring drivers from scratch, inspect the discovery results from Phase 1 Track A:
+- Does the repository already have an API smoke test, integration test suite, or test runner (e.g. `scripts/test-api.js`, `tests/e2e/runner.js`, `pytest`, `cargo test`, `go test`)?
+- **Prioritize Re-using Existing Suites**: Existing test scripts already solve authentication token acquisition, valid request body formation, path parameter substitution, and seed data references.
+- **How to Profile Existing Test Suites**:
+  1. Wrap the existing test suite with the runtime profiler (e.g. `node --cpu-prof scripts/test-api.js` or `python -m cProfile -o audit.prof tests/test_api.py`).
+  2. Or adapt the existing test suite into the Tier 1 driver harness by extracting its endpoint request calls into a sequential measurement loop.
+
+#### Step 3: Automated Driver Synthesis Architecture (Unified Driver Harness)
+When authoring the Tier 1 Driver Suite from scratch or extending existing scripts, follow this automated synthesis pattern:
+
+1. **Application Server Bootstrapping**:
+   - Start the target application server programmatically on an ephemeral port (e.g. `const server = app.listen(0); const port = server.address().port;` in Node.js, or launch `uvicorn app:app --port 0` / background process).
+   - This ensures requests pass through the full HTTP middleware stack without port collisions.
+
+2. **Authentication & Session Bootstrapping**:
+   - Do NOT run authenticated endpoints without valid credentials (which fails at middleware with 401 Unauthorized, leaving controller logic unexercised).
+   - Upfront in the driver harness:
+     * Issue a login request with seeded test credentials (e.g. `POST /api/auth/login`) or generate valid JWT bearer tokens / session cookies using the local environment secret (e.g. `env.JWT_SECRET`).
+     * Obtain tokens for both a standard user role and an administrative user role.
+     * Attach the appropriate `Authorization: Bearer <token>` or `Cookie: session=...` header to all protected endpoint requests.
+
+3. **Path Variable & Route Parameter Resolution**:
+   - For parameterized paths (e.g. `/api/users/:id`, `/api/posts/:id/comments`, `/api/groups/:id/members/:userId`):
+     * Do NOT send literal strings like `":id"` or invalid IDs that trigger 404 Not Found.
+     * Use the valid entity IDs cataloged in Phase 1 Track B from seed scripts or database tables (e.g., `user_id = 1`, `post_id = 1`, `group_id = 1`).
+     * Or capture dynamic IDs created during initial setup steps (e.g., create a test post, save its returned ID, and use it for subsequent `/api/posts/:id` requests).
+
+4. **Synthetic Request Body Generation (Auto-Payload Synthesis)**:
+   - For all mutation methods (POST, PUT, PATCH):
+     * Construct valid JSON request bodies conforming to the schemas discovered in Phase 1 Track A.
+     * **Dynamic Unique Keying**: For fields with unique database constraints (e.g. `username`, `email`, `slug`), append a timestamp or random suffix (e.g. `test_usr_${Date.now()}@pulsenet.dev`) so repeated test runs never fail with 409 Conflict.
+     * **Validation Constraints**: Satisfy all controller validation requirements (minimum string lengths, regex patterns, required booleans/enums).
+     * **Valid Foreign Keys**: Ensure referenced foreign keys point to existing seeded records.
+
+5. **Query String Synthesis**:
+   - For GET endpoints supporting query filters (e.g. `/api/users/search`, `/api/friends/suggestions`):
+     * Supply valid default parameters (e.g. `?q=test`, `?page=1&limit=20`, `?direction=incoming`).
+
+6. **HTTP Status Code Verification & Error Guardrails**:
+   - The driver script **MUST assert** that requests return expected HTTP 2xx (or 3xx) status codes.
+   - **Zero Tolerance for Unchecked HTTP Errors**:
+     * A response of `401 Unauthorized` means authentication failed before entering the route handler.
+     * A response of `422 Unprocessable Entity` or `400 Bad Request` means validation failed before executing business/database logic.
+     * A response of `404 Not Found` means path parameters did not match any entity.
+     * A response of `500 Internal Server Error` indicates an unhandled crash.
+     * **If any endpoint returns 401, 403, 404, 422, or 500, log the error response body immediately and fix the payload, path parameter, or auth token until it succeeds.**
+
+#### Step 4: Safe Mutation Protocol (Handling Write Operations on Shared/Test Databases)
+Never avoid profiling mutation endpoints (POST, PUT, PATCH, DELETE) out of fear of database side effects:
+- **Why Mutations Must Be Profiled**: Mutation endpoints are frequently the slowest and most contention-heavy operations in any application. They perform password hashing (bcrypt/argon2), database transactions, row/table locks, trigger executions, index recalculations, and cascade foreign key checks. Skipping mutations blinds the audit to the most severe bottlenecks!
+- **Safe Mutation Patterns**:
+  1. **Dynamic Unique Key Generation**: Use timestamped or UUID identifiers (e.g. `test_run_${Date.now()}`) to prevent unique key collisions across runs.
+  2. **Automated Teardown / Cleanup Hooks**: Maintain an array of created entity IDs in the driver harness. In a `finally` block or teardown phase, delete or soft-delete created test entities via the API or direct DB cleanup.
+  3. **Dedicated Test Prefixes / Tagging**: Prefix test entities with `[AUDIT_TEST]` or `perf_test_*` so they can be identified and purged safely without impacting developer or shared data.
+  4. **Transactional Rollback (Where Supported)**: If testing directly against data layers or ORMs, wrap the operation in a transaction and execute `ROLLBACK` at the end of the repetition.
+  5. **Safety Safeguard**: Output one non-blocking notice before executing write-heavy drivers:
+     > "Notice: Driver workflow will execute database write operations against the configured target database."
+
+#### Step 5: Realistic Data Seeding
 - Seed realistic data volumes rather than trivial test stubs:
   * Do NOT test against an empty database or a table with 5 rows. Trivial data masks missing indexes, table scans, and N+1 query patterns.
   * Seed hundreds or thousands of rows (e.g., 100+ users, 50+ products, 1,000+ reviews/orders, 10,000+ log events).
   * Ensure foreign key relationships, joined tables, and filtered fields contain diverse values.
   * Record seeded table counts in `.work/run-metadata.json` under `data_volume`.
-
-#### Step 3: Driver Script Authoring
-- Author dedicated, repeatable driver scripts for each workflow.
-- Requirements for drivers:
-  * Self-contained and runnable via standard CLI commands or scripting languages.
-  * Idempotent or self-cleaning: successive executions must not fail due to unique constraint violations (e.g., use randomized/incrementing emails for signup or reset state cleanly).
-  * Realistic request payloads containing valid parameters, headers, and query parameters.
-- **Safety Safeguard**: Before running write-heavy workflows, output one short, non-blocking notice:
-  > "Notice: Driver workflow will execute database write operations against the configured target database."
 
 ---
 
@@ -186,26 +241,33 @@ Run `classify_ledger()` from `skills/profile-audit/scripts/classify.py`:
 ### Prompt 1: Workflow Driver Authoring Sub-Agent
 ```text
 You are a workflow driver authoring sub-agent for profile-audit.
-Role: Create an automated, repeatable benchmark driver for workflow `{WORKFLOW_NAME}`.
+Role: Create an automated, repeatable benchmark driver for workflow `{WORKFLOW_NAME}` or the comprehensive Tier 1 driver suite covering in-scope routes.
 
 Inputs:
 - REPO_PATH: Path to target repository.
-- WORKFLOW_NAME: Name of the workflow (e.g. user_signup, list_orders).
-- ENTRY_POINT: Route or command to trigger the workflow.
-- SEED_DATA: Seed volume requirements.
+- WORKFLOW_NAME: Name of the workflow (e.g. user_signup, list_orders, or full_surface_suite).
+- ENTRY_POINTS: Routes or commands to trigger.
+- REQUEST_CONTRACTS: Auth requirements, path params, query params, and body schemas from Phase 1.
+- EXISTING_TESTS: Any existing test scripts discovered in Phase 1 (e.g. scripts/test-api.js).
+- SEED_DATA: Seed volume requirements and known valid entity IDs.
 
 Strict Rules:
 1. Do not modify the audited application source code.
 2. The driver must be self-contained, repeatable, and idempotent.
-3. Use realistic data payloads (valid emails, existing foreign keys).
-4. If the workflow writes to a database, output one non-blocking notice:
+3. If an existing test script exists in the repository, adapt or wrap it rather than rewriting from scratch.
+4. Bootstrap authentication upfront: log in or generate valid tokens/cookies and attach them to protected endpoints. Never allow 401 Unauthorized errors.
+5. Resolve path parameters (:id, :userId) using real seeded entity IDs or dynamically created IDs. Never send unpopulated placeholder strings or IDs that 404.
+6. Auto-generate valid synthetic payloads for POST/PUT/PATCH requests satisfying all schema validation constraints. Use timestamped/UUID values for unique keys to prevent 409 Conflict.
+7. Assert that all requests return HTTP 2xx status codes. If an endpoint returns 401, 403, 404, 422, or 500, fail loudly and adjust the payload or auth header until the request executes through the controller.
+8. If the workflow writes to a database, output one non-blocking notice:
    "Notice: Driver workflow will execute database write operations against the configured target database."
+9. Register created entities and clean them up in a finally/teardown block where appropriate.
 
 Output Format:
 Provide a runnable driver script path and instructions on how to invoke it sequentially.
 
 Error Handling & Stop Condition:
-If the driver fails on duplicate key errors, use randomized unique keys (e.g. timestamp-based). Stop when the driver runs cleanly 3 consecutive times.
+If the driver fails on duplicate key errors, use randomized unique keys (e.g. timestamp-based). If validation fails (422), inspect the controller schema and fix payload fields. Stop when the driver runs cleanly 3 consecutive times with 2xx responses.
 ```
 
 ### Prompt 2: Sequential Measurement Sub-Agent
