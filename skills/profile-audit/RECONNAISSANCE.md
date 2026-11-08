@@ -64,12 +64,19 @@ Scan the codebase for the 8 known latency and throughput anti-patterns:
 
 ### Step 3: Code Unit Cataloging & Identifier Assignment
 - Collate every discovered entry point, handler function, background job, and significant business logic function into an inventory.
+- **Strict Scope Hygiene & Third-Party Exclusion**:
+  * Never catalog units from external libraries, virtual environments, or framework internals. Explicitly exclude:
+    - Python virtual environments and packages: `site-packages/`, `.venv/`, `venv/`, `env/`, `Lib/`, `dist-packages/`.
+    - Node.js dependencies: `node_modules/`.
+    - Go / Rust / Java dependencies: `vendor/`, `target/`, `.gradle/`, `.cargo/`.
+    - Auto-generated framework documentation routes: `/docs`, `/redoc`, `/openapi.json`, `/swagger*`, `/favicon.ico`.
+  * **Only application code originating in the target repository belongs in scope.**
 - Assign a stable, unique identifier to each unit (`unit-001`, `unit-002`, ...).
 - Assign unit metadata:
   * `id`: Unique string identifier.
   * `kind`: Exact enum value: `"function"`, `"endpoint"`, or `"job"`.
   * `name`: Descriptive name (e.g., `POST /signup`, `hash_password`, `order_cleanup_task`).
-  * `file`: Relative file path from repository root.
+  * `file`: Relative file path from repository root (must be application source code, never a virtualenv or site-package path).
   * `line`: Positive integer indicating definition line.
   * `status`: Strictly set to `"pending"`.
   * `workflows`: Array of workflow identifiers associated with this unit.

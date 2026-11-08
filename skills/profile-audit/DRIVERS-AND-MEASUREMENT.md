@@ -74,8 +74,98 @@ When authoring the Tier 1 Driver Suite from scratch or extending existing script
      * A response of `401 Unauthorized` means authentication failed before entering the route handler.
      * A response of `422 Unprocessable Entity` or `400 Bad Request` means validation failed before executing business/database logic.
      * A response of `404 Not Found` means path parameters did not match any entity.
-     * A response of `500 Internal Server Error` indicates an unhandled crash.
-     * **If any endpoint returns 401, 403, 404, 422, or 500, log the error response body immediately and fix the payload, path parameter, or auth token until it succeeds.**
+     * A response of `500 Internal Server Error` indicates an unhandled crash or infrastructure failure.
+     * **If any endpoint returns 401, 403, 404, 422, or 500, log the error response body immediately and follow Step 3b to resolve or escalate.**
+
+#### Step 3b: Interactive Blocker Escalation Protocol (Ask the User)
+**Under no circumstances may an agent silently leave cataloged endpoints or code units marked as `not_exercised` due to auth gates, missing cloud credentials, validation errors, or queue daemons.**
+
+When an audit encounters external barriers during Phase 2 driver authoring or Phase 3 execution, the agent **MUST pause and interactively ask the user** how they want to resolve the blocker. Present clear, actionable choices with a recommended default.
+
+##### Blocker Scenarios and Escalation Templates:
+
+1. **Authentication Barrier (HTTP 401 Unauthorized / 403 Forbidden)**:
+   - **Root Cause**: Route is protected by authentication middleware or dependencies (e.g. Amazon Cognito RS256 JWKS, Firebase Auth, OAuth2 JWT bearer tokens, session cookies).
+   - **Mandatory User Question**:
+     * *Question*: `"Cataloged endpoint(s) [METHOD /path] require authentication and returned HTTP 401. How would you like the driver harness to authenticate?"`
+     * *Option 1 (Recommended)*: `"(Recommended) Autonomous In-Memory Dependency Override (Inject a mock user into FastAPI app.dependency_overrides or Express middleware so all routes execute without external tokens)"`
+     * *Option 2*: `"Provide an active test JWT bearer token or test user credentials"`
+   - **Autonomous Driver Recipe (FastAPI)**:
+     ```python
+     # In driver harness script:
+     from app.main import app
+     from app.auth import get_current_user  # or relevant auth dependency
+
+     mock_user = {
+         "id": "audit-test-user-1",
+         "username": "perf_tester",
+         "email": "audit@local.test",
+         "role": "admin"
+     }
+     app.dependency_overrides[get_current_user] = lambda: mock_user
+     ```
+   - **Autonomous Driver Recipe (Express / Node.js)**:
+     ```javascript
+     // In driver harness script before route registration:
+     app.use((req, res, next) => {
+       req.user = { id: "audit-test-user-1", role: "admin", email: "audit@local.test" };
+       next();
+     });
+     ```
+
+2. **Expired Cloud Credentials / Missing Cloud Secrets (HTTP 500 / 503)**:
+   - **Root Cause**: Backend attempts to retrieve database credentials or connect to managed services (e.g., AWS Secrets Manager `botocore.exceptions.LoginRefreshRequired: Your session has expired`, GCP Secret Manager, Azure Key Vault).
+   - **Mandatory User Question**:
+     * *Question*: `"The backend failed to resolve database credentials from cloud secrets manager ([error message]). How should the driver harness handle database connectivity?"`
+     * *Option 1 (Recommended)*: `"(Recommended) In-Memory / SQLite Local Driver Harness (Override database connector with a local SQLite or mock connection to measure controller logic, request parsing, serialization, and services immediately)"`
+     * *Option 2*: `"Pause while I refresh cloud credentials in terminal (run 'aws sso login' or refresh cloud token)"`
+   - **Autonomous Driver Recipe (SQLAlchemy / Mock DB)**:
+     ```python
+     # Override get_db dependency with local SQLite memory engine
+     from app.database import get_db, Base
+     from sqlalchemy import create_engine
+     from sqlalchemy.orm import sessionmaker
+
+     test_engine = create_engine("sqlite:///:memory:")
+     Base.metadata.create_all(bind=test_engine)
+     TestSession = sessionmaker(bind=test_engine)
+
+     def override_get_db():
+         db = TestSession()
+         try:
+             yield db
+         finally:
+             db.close()
+
+     app.dependency_overrides[get_db] = override_get_db
+     ```
+
+3. **Complex Payload & Schema Validation Failures (HTTP 422 / 400)**:
+   - **Root Cause**: Mutation endpoint rejects synthetic JSON body due to missing nested fields, regex validation, enum mismatches, or foreign key constraints.
+   - **Mandatory User Question**:
+     * *Question*: `"Endpoint [POST /path] rejected the request body with HTTP 422 ([validation error details]). How would you like to provide the request payload?"`
+     * *Option 1 (Recommended)*: `"(Recommended) Auto-synthesize schema-compliant mock payload from model definitions (Pydantic / Zod / DB columns)"`
+     * *Option 2*: `"Provide sample JSON fixture payload manually"`
+   - **Autonomous Driver Recipe**:
+     Inspect the Pydantic model (`schema.model_fields`) or Zod schema in application source and dynamically construct a payload containing valid dummy types, UUIDs, and conforming strings.
+
+4. **Background Workers, Cron Daemons & Queue Consumers**:
+   - **Root Cause**: Units discovered in background worker files (e.g. `sync_worker.py`, Celery tasks, SQS consumers, BullMQ jobs) are not triggered by HTTP endpoints.
+   - **Mandatory User Question**:
+     * *Question*: `"Cataloged units in [worker_file] run as background queue workers rather than HTTP routes. How should they be exercised?"`
+     * *Option 1 (Recommended)*: `"(Recommended) Direct Function Invocation Harness (Import worker handler functions directly and execute sequentially with synthetic task payloads)"`
+     * *Option 2*: `"Start local message broker container (Redis / RabbitMQ) and produce test messages"`
+   - **Autonomous Driver Recipe**:
+     ```python
+     # Direct worker invocation in driver script:
+     from app.workers.sync_worker import process_sync_task
+
+     mock_task_payload = {"task_id": "test-task-1", "user_id": "audit-user-1", "action": "full_sync"}
+     process_sync_task(mock_task_payload)
+     ```
+
+##### Rule of Escalation:
+If the user selects an in-memory override or mock harness, the agent applies the override strictly inside the driver script without modifying target application repository files. Once unblocked, rerun the driver to confirm HTTP 2xx before recording final measurements.
 
 #### Step 4: Safe Mutation Protocol (Handling Write Operations on Shared/Test Databases)
 Never avoid profiling mutation endpoints (POST, PUT, PATCH, DELETE) out of fear of database side effects:
@@ -262,6 +352,7 @@ Strict Rules:
 8. If the workflow writes to a database, output one non-blocking notice:
    "Notice: Driver workflow will execute database write operations against the configured target database."
 9. Register created entities and clean them up in a finally/teardown block where appropriate.
+10. If an endpoint cannot be exercised due to auth gates (401), cloud credential failures (500), or complex validation schemas (422), do NOT silently mark it not_exercised. Invoke the Interactive Blocker Escalation Protocol (Step 3b) and ask the user which unblocking option to apply.
 
 Output Format:
 Provide a runnable driver script path and instructions on how to invoke it sequentially.

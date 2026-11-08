@@ -43,6 +43,7 @@ Operating strictly in report-only mode, the skill never edits audited code, neve
 8. **No Sandbox Mandate**: Run in whatever environment the orchestrator operates. Issue one non-blocking notice prior to write-heavy drivers without halting or refusing execution.
 9. **No Mandatory Profiler Packages**: Rely on built-in runtimes, existing tools, OS facilities, and monotonic timers. Do not require installing external profiling packages.
 10. **Zero External Dependencies**: All helper scripts use the Python 3.9+ standard library only. The generated HTML dashboard is self-contained with zero external CDN, font, or script requests.
+11. **Zero Silent Coverage Drops & Interactive Blocker Escalation**: When cataloged endpoints or code units are blocked during driver authoring or execution by authentication gates (401/403), expired cloud credentials (e.g. AWS/GCP SSO tokens), complex validation payloads (422), or background daemon requirements, the agent MUST NOT silently bypass them or accept them as `not_exercised`. The agent MUST proactively ask the user how to unblock them (presenting actionable choices like in-memory dependency overrides/mock auth vs. live credential refresh) and resolve the blocker before proceeding to final measurement.
 
 ---
 
@@ -94,7 +95,8 @@ Load each phase instruction file only when that specific phase starts:
 - **Action**: Read `DRIVERS-AND-MEASUREMENT.md` section on Drivers.
 - **Scope**: Author repeatable per-workflow driver scripts and seed realistic test data volumes (hundreds or thousands of records, not empty tables).
 - **Execution**: Author drivers in parallel if supported.
-- **Done Condition**: Repeatable driver suite ready covering all discovered application entry points and key workflows (aiming for 100% endpoint coverage).
+- **Interactive Escalation Requirement**: If any cataloged endpoint or unit cannot be exercised due to authentication gates (401/403), cloud credential expiration (500/503), or validation schemas (422), the agent MUST NOT silently drop coverage. Execute the **Interactive Blocker Escalation Protocol** (`DRIVERS-AND-MEASUREMENT.md` Step 3b) to ask the user how to unblock it (e.g., in-memory dependency overrides/mock auth vs. live credential refresh).
+- **Done Condition**: Repeatable driver suite ready covering all discovered application entry points and key workflows (aiming for 100% endpoint coverage with zero unaddressed blockers).
 
 ### Phase 3: Sequential Measurement
 - **Action**: Read `DRIVERS-AND-MEASUREMENT.md` section on Measurement.
