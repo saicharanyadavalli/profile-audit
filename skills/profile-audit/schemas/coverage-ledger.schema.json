@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CoverageLedger",
+  "description": "Schema for the coverage ledger tracking all in-scope code units, classification statuses, and per-unit metrics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "units"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+      "description": "Semantic version string for coverage ledger schema."
+    },
+    "units": {
+      "type": "array",
+      "description": "Inventory of all code units identified in the target codebase.",
+      "items": {
+        "$ref": "#/$defs/unit"
+      }
+    }
+  },
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "file",
+        "line",
+        "status",
+        "workflows"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for the code unit."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "function",
+            "method",
+            "constructor",
+            "endpoint",
+            "job",
+            "event_handler",
+            "callback"
+          ],
+          "description": "Architectural category of the code unit."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifier or route pattern of the unit."
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative file path to where the unit is defined."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-indexed starting line number of the unit definition."
+        },
+        "is_async": {
+          "type": "boolean",
+          "description": "Whether unit is an asynchronous coroutine/function."
+        },
+        "parent_unit_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional parent unit ID in the declaration hierarchy."
+        },
+        "reachable": {
+          "type": "boolean",
+          "description": "Whether unit is statically reachable from discovered entry points."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "hot",
+            "warm",
+            "cold",
+            "not_exercised",
+            "insufficient_data"
+          ],
+          "description": "Current profiling classification status of the unit."
+        },
+        "status_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Deterministic reason for the assigned status (must not contain numbers followed by % or ms)."
+        },
+        "workflows": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Array of workflow IDs that invoked or exercised this unit during profiling runs."
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional explanation or static inspection detail (must not contain numbers followed by % or ms)."
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "self_ms",
+            "owned_ms",
+            "total_ms",
+            "calls",
+            "audit_share_pct",
+            "workflow_share_pct",
+            "per_workflow"
+          ],
+          "properties": {
+            "self_ms": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "owned_ms": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "total_ms": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "calls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "audit_share_pct": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "workflow_share_pct": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "self_share_pct": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "total_share_pct": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "owned_share_pct": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "inclusive_share_pct": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "critical_path_share_pct": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0
+            },
+            "per_workflow": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "workflow_id",
+                  "owned_ms",
+                  "total_ms",
+                  "workflow_share_pct"
+                ],
+                "properties": {
+                  "workflow_id": { "type": "string", "minLength": 1 },
+                  "owned_ms": { "type": "number", "minimum": 0.0 },
+                  "self_ms": { "type": "number", "minimum": 0.0 },
+                  "total_ms": { "type": "number", "minimum": 0.0 },
+                  "workflow_share_pct": { "type": "number", "minimum": 0.0 },
+                  "self_share_pct": { "type": "number", "minimum": 0.0 },
+                  "total_share_pct": { "type": "number", "minimum": 0.0 },
+                  "owned_share_pct": { "type": "number", "minimum": 0.0 },
+                  "inclusive_share_pct": { "type": "number", "minimum": 0.0 },
+                  "critical_path_share_pct": { "type": ["number", "null"], "minimum": 0.0 }
+                }
+              }
+            },
+            "aggregate_ms": {
+              "type": "number",
+              "minimum": 0.0
+            }
+          }
+        }
+      }
+    }
+  }
+}

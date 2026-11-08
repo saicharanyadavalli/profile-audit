@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportData",
+  "description": "Schema for complete canonical profiling data payload embedded in dashboard HTML.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_metadata",
+    "coverage_ledger",
+    "measurements",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "run_metadata": {
+      "type": "object"
+    },
+    "architecture": {
+      "type": "object"
+    },
+    "coverage_ledger": {
+      "type": "object"
+    },
+    "measurements": {
+      "type": "object"
+    },
+    "findings": {
+      "type": "array"
+    },
+    "observations": {
+      "type": "array"
+    },
+    "reviewed_not_bottleneck": {
+      "type": "array"
+    }
+  }
+}

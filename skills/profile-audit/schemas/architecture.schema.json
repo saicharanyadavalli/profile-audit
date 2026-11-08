@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Architecture",
+  "description": "Schema for discovered and assumed system architecture components and dependencies.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+      "description": "Semantic version string for architecture schema."
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Discovered and assumed architectural topology nodes.",
+      "items": {
+        "$ref": "#/$defs/arch_node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Communication and dependency edges between architecture nodes.",
+      "items": {
+        "$ref": "#/$defs/arch_edge"
+      }
+    }
+  },
+  "$defs": {
+    "arch_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "basis"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for the architectural node."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name of the component."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "frontend",
+            "backend",
+            "api",
+            "database",
+            "cache",
+            "storage",
+            "external",
+            "worker",
+            "other"
+          ],
+          "description": "Category of architectural component."
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "discovered",
+            "assumed"
+          ],
+          "description": "Whether component was verified from evidence or assumed."
+        },
+        "tech": {
+          "type": "string",
+          "description": "Underlying technology, framework, or vendor."
+        },
+        "description": {
+          "type": "string",
+          "description": "Role or responsibilities of this component."
+        }
+      }
+    },
+    "arch_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "basis"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source node ID."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target node ID."
+        },
+        "protocol": {
+          "type": "string",
+          "description": "Communication protocol (e.g. HTTP, TCP, IPC, SQL)."
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "discovered",
+            "assumed"
+          ],
+          "description": "Whether connection was observed from code/traffic or assumed."
+        },
+        "description": {
+          "type": "string",
+          "description": "Purpose or nature of the interaction."
+        }
+      }
+    }
+  }
+}

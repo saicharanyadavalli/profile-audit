@@ -1,0 +1,75 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  validate:
+    name: Validate, Build & Self-Containment Audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Verify zero-dependency helper tools CLI interface
+        run: |
+          python skills/profile-audit/scripts/env_probe.py
+          python skills/profile-audit/scripts/classify.py --help
+          python skills/profile-audit/scripts/measurements_tools.py --help
+          python skills/profile-audit/scripts/validate.py --help
+          python skills/profile-audit/scripts/render_markdown.py --help
+          python skills/profile-audit/scripts/build_report.py --help
+
+      - name: Validate sample run artifacts through dashboard
+        run: |
+          python skills/profile-audit/scripts/validate.py examples/sample-run/PROFILING-DASHBOARD.html --strict
+          python skills/profile-audit/scripts/render_markdown.py examples/sample-run/PROFILING-DASHBOARD.html --check
+
+      - name: Build HTML report from sample run
+        run: |
+          python skills/profile-audit/scripts/build_report.py examples/sample-run --out /tmp/sample-report.html
+
+      - name: Audit HTML report for offline self-containment
+        run: |
+          python -c "
+          import re, sys
+          from pathlib import Path
+
+          report_path = Path('/tmp/sample-report.html')
+          if not report_path.exists():
+              print('ERROR: /tmp/sample-report.html does not exist', file=sys.stderr)
+              sys.exit(1)
+
+          content = report_path.read_text(encoding='utf-8')
+          if '<!DOCTYPE html>' not in content:
+              print('ERROR: Missing DOCTYPE in generated report', file=sys.stderr)
+              sys.exit(1)
+
+          if '__REPORT_DATA__' in content:
+              print('ERROR: Unsubstituted __REPORT_DATA__ placeholder', file=sys.stderr)
+              sys.exit(1)
+
+          url_matches = re.findall(r'https?://|//[a-zA-Z0-9]', content, re.IGNORECASE)
+          if url_matches:
+              print(f'ERROR: External URLs detected in report: {url_matches}', file=sys.stderr)
+              sys.exit(1)
+
+          print('Report self-containment audit passed: zero external network references.')
+          "

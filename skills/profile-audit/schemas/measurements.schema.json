@@ -1,0 +1,591 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Measurements",
+  "description": "Schema for profiling measurements, run duration series, summary statistics, and recursive call trees.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workflows"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+      "description": "Semantic version string for measurements schema."
+    },
+    "workflows": {
+      "type": "array",
+      "minItems": 1,
+      "description": "List of measured workflows and their profiling execution call trees.",
+      "items": {
+        "$ref": "#/$defs/workflow"
+      }
+    },
+    "line_profiles": {
+      "type": "array",
+      "description": "Line-level profiling results for hot and significant units.",
+      "items": {
+        "$ref": "#/$defs/line_profile"
+      }
+    },
+    "probes": {
+      "type": "array",
+      "description": "Structured inventory of benchmark, concurrency, and scale probe experiments.",
+      "items": {
+        "$ref": "#/$defs/probe"
+      }
+    }
+  },
+  "$defs": {
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "runs",
+        "summary",
+        "call_tree"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for the workflow."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable name of the workflow."
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "description": "Sequence of measured run durations in milliseconds for each iteration."
+        },
+        "critical_path_ms": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "Critical path wall-clock duration in milliseconds for concurrent workflows."
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "p50",
+            "p95",
+            "mean",
+            "coefficient_of_variation"
+          ],
+          "description": "Summary statistics computed across all measured runs.",
+          "properties": {
+            "n": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "p50": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "50th percentile (median) workflow duration in milliseconds."
+            },
+            "p95": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "95th percentile workflow duration in milliseconds."
+            },
+            "mean": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Arithmetic mean workflow duration in milliseconds."
+            },
+            "stdev": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "cv": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "coefficient_of_variation": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Coefficient of variation (standard deviation divided by mean)."
+            },
+            "min": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "max": {
+              "type": "number",
+              "minimum": 0.0
+            }
+          }
+        },
+        "call_tree": {
+          "$ref": "#/$defs/call_tree_node"
+        }
+      }
+    },
+    "call_tree_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "unit_id",
+        "kind",
+        "calls",
+        "self_ms",
+        "total_ms",
+        "children"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique identifier for the node within this workflow."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Function name, endpoint route, or call frame label."
+        },
+        "unit_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Reference to unit ID in coverage ledger, or null if external framework/system call."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "cpu",
+            "wait",
+            "mixed",
+            "unattributed"
+          ],
+          "description": "Call type: active CPU computation, waiting for I/O, mixed, or unattributed overhead."
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "compute",
+            "db.connect",
+            "db.session",
+            "db.query",
+            "db.fetch",
+            "db.hydrate",
+            "db.commit",
+            "db.rollback",
+            "http.dns",
+            "http.connect",
+            "http.tls",
+            "http.pool_wait",
+            "http.send",
+            "http.wait",
+            "http.read",
+            "http.parse",
+            "io.disk",
+            "other"
+          ],
+          "description": "Fine-grained operation classification."
+        },
+        "calls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of invocations of this frame in the workflow execution."
+        },
+        "self_ms": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "Self execution time in milliseconds spent strictly within this frame."
+        },
+        "total_ms": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "Total inclusive execution time in milliseconds including all child calls."
+        },
+        "children_execution": {
+          "type": "string",
+          "enum": [
+            "sequential",
+            "concurrent"
+          ],
+          "description": "Execution model for immediate child nodes."
+        },
+        "start_ms": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "Start offset relative to parent or workflow root."
+        },
+        "end_ms": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "End offset relative to parent or workflow root."
+        },
+        "per_run_ms": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0.0
+          },
+          "description": "Recorded per-run duration samples for this node."
+        },
+        "per_run_basis": {
+          "type": "string",
+          "enum": [
+            "inclusive",
+            "exclusive"
+          ],
+          "description": "Whether per_run_ms captures inclusive total or exclusive self time."
+        },
+        "per_run_calls": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Recorded per-run invocation counts for this node across measured iterations."
+        },
+        "total_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total invocation count aggregated across all measured workflow runs."
+        },
+        "calls_per_run": {
+          "type": "number",
+          "minimum": 0.0,
+          "description": "Average number of invocations per single workflow execution."
+        },
+        "stats": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "n",
+            "mean",
+            "p50",
+            "p95",
+            "stdev",
+            "cv",
+            "min",
+            "max"
+          ],
+          "properties": {
+            "n": { "type": "integer", "minimum": 1 },
+            "mean": { "type": "number", "minimum": 0.0 },
+            "p50": { "type": "number", "minimum": 0.0 },
+            "p95": { "type": "number", "minimum": 0.0 },
+            "stdev": { "type": "number", "minimum": 0.0 },
+            "cv": { "type": "number", "minimum": 0.0 },
+            "min": { "type": "number", "minimum": 0.0 },
+            "max": { "type": "number", "minimum": 0.0 }
+          }
+        },
+        "stats_status": {
+          "type": "string",
+          "enum": [
+            "captured",
+            "not_captured",
+            "unavailable",
+            "sampled"
+          ],
+          "description": "Capture status for node-level statistics."
+        },
+        "wall_clock_method": {
+          "type": "string",
+          "description": "Mechanism used to capture total_ms, e.g. time.perf_counter."
+        },
+        "cpu_method": {
+          "type": "string",
+          "description": "Mechanism used to capture cpu_ms, e.g. time.thread_time."
+        },
+        "wait_method": {
+          "type": "string",
+          "description": "Mechanism used to capture wait_ms, e.g. derived_wall_minus_cpu."
+        },
+        "cpu_wait_attribution_basis": {
+          "type": "string",
+          "enum": [
+            "thread_time_additive",
+            "task_isolated",
+            "process_isolated",
+            "profiler_sampling",
+            "unavailable"
+          ],
+          "description": "Attribution model determining whether CPU and wait are additive."
+        },
+        "crossed_async_yield_points": {
+          "type": "boolean",
+          "description": "Whether execution crossed asynchronous yield (await) points."
+        },
+        "overlapping_child_intervals": {
+          "type": "boolean",
+          "description": "Whether concurrent child operations overlap in wall-clock time."
+        },
+        "self_cpu_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0.0
+        },
+        "self_wait_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0.0
+        },
+        "cpu_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0.0
+        },
+        "wait_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0.0
+        },
+        "cpu_wait_source": {
+          "type": "string",
+          "enum": [
+            "measured_thread_cpu",
+            "measured_process_cpu",
+            "profiler_oncpu",
+            "unavailable"
+          ]
+        },
+        "memory": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allocated_bytes": { "type": "integer", "minimum": 0 },
+            "retained_bytes": { "type": "integer", "minimum": 0 },
+            "peak_bytes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "measured",
+            "simulated",
+            "estimated"
+          ],
+          "description": "Provenance source of timing and execution evidence."
+        },
+        "source_note": {
+          "type": "string",
+          "description": "Context regarding source, profiler limitations, or simulated nature."
+        },
+        "children": {
+          "type": "array",
+          "description": "Nested call tree nodes representing child operations.",
+          "items": {
+            "$ref": "#/$defs/call_tree_node"
+          }
+        }
+      }
+    },
+    "line_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit_id"
+      ],
+      "properties": {
+        "unit_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_id": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "overhead_note": {
+          "type": "string"
+        },
+        "repetitions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "residual_ms": {
+          "type": "number"
+        },
+        "line_profile_status": {
+          "type": "string",
+          "enum": [
+            "available",
+            "unavailable"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line",
+              "code",
+              "hits",
+              "total_ms",
+              "share_of_unit_pct"
+            ],
+            "properties": {
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "code": {
+                "type": "string"
+              },
+              "hits": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_ms": {
+                "type": "number",
+                "minimum": 0.0
+              },
+              "share_of_unit_pct": {
+                "type": "number",
+                "minimum": 0.0
+              },
+              "cpu_ms": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0.0
+              },
+              "wait_ms": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0.0
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probe_id",
+        "probe_type",
+        "workflow_id",
+        "target",
+        "environment",
+        "workload_inputs",
+        "data_volume",
+        "repetitions",
+        "per_run_observations",
+        "derived_statistics",
+        "provenance",
+        "status"
+      ],
+      "properties": {
+        "probe_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for the probe."
+        },
+        "probe_type": {
+          "type": "string",
+          "enum": [
+            "scale",
+            "concurrency",
+            "baseline",
+            "saturation"
+          ],
+          "description": "Type of controlled experiment probe."
+        },
+        "workflow_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workflow identifier this probe investigates."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target endpoint route or operation name."
+        },
+        "environment": {
+          "type": "object",
+          "description": "Hardware and runtime environment metadata."
+        },
+        "workload_inputs": {
+          "type": "object",
+          "description": "Controlled parameters and payload configuration for the workload."
+        },
+        "data_volume": {
+          "type": [
+            "integer",
+            "string",
+            "object"
+          ],
+          "description": "Database or dataset volume under test (e.g. row count)."
+        },
+        "repetitions": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of measured repetitions executed."
+        },
+        "per_run_observations": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Raw per-run measurement observations."
+        },
+        "derived_statistics": {
+          "type": "object",
+          "description": "Summary statistics (p50, p95, throughput, scaling factors) derived from observations."
+        },
+        "provenance": {
+          "type": "string",
+          "enum": [
+            "measured",
+            "simulated",
+            "estimated"
+          ],
+          "description": "Provenance source of probe execution data."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "failed",
+            "aborted"
+          ],
+          "description": "Execution status of the probe."
+        }
+      }
+    }
+  }
+}

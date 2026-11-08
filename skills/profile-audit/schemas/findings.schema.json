@@ -1,0 +1,630 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Findings",
+  "description": "Schema for performance bottleneck findings, static observations, metrics, evidence, and remediation plans.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+      "description": "Semantic version string for findings schema."
+    },
+    "findings": {
+      "type": "array",
+      "description": "List of verified or provisional performance bottleneck findings.",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "observations": {
+      "type": "array",
+      "description": "Static code analysis observations not backed by dynamic profiling metrics.",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "reviewed_not_bottleneck": {
+      "type": "array",
+      "description": "Hot or warm units evaluated and justified as non-bottlenecks based on evidence.",
+      "items": {
+        "$ref": "#/$defs/reviewed_item"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "category",
+        "location",
+        "unit_ids",
+        "workflows",
+        "metrics",
+        "evidence",
+        "root_cause",
+        "status",
+        "fix"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "impact",
+              "evidence_refs"
+            ],
+            "properties": {
+              "impact": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "evidence_refs": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "needs_validation"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "hypothesis",
+              "missing_evidence",
+              "validation_blocker",
+              "next_validation_step"
+            ],
+            "properties": {
+              "impact": {
+                "type": "null"
+              },
+              "severity": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for the finding."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short, descriptive title of the bottleneck."
+        },
+        "hypothesis": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Precise falsifiable hypothesis for unverified bottleneck."
+        },
+        "missing_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Array of specific evidence required to prove or disprove the hypothesis."
+        },
+        "validation_blocker": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact technical or operational blocker preventing dynamic verification."
+        },
+        "next_validation_step": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Safe, concrete next step to obtain missing evidence without impacting production."
+        },
+        "probe_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "References to top-level probe_id entries in measurements.json supporting this finding."
+        },
+        "impact": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            null
+          ],
+          "description": "Severity impact rating of the bottleneck on workflow latency."
+        },
+        "severity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            null
+          ],
+          "description": "Severity impact rating of the bottleneck on workflow latency (alias for impact)."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "description": "Confidence level in diagnosis and evidence sufficiency."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "expensive_compute",
+            "n_plus_one_query",
+            "missing_index",
+            "blocking_io",
+            "missing_timeout",
+            "unbounded_query",
+            "unpooled_resource",
+            "heavy_import",
+            "redundant_io",
+            "inefficient_algorithm",
+            "memory_growth",
+            "memory_leak",
+            "connection_pool_exhaustion",
+            "event_loop_blocking",
+            "serialization_overhead",
+            "excessive_allocations",
+            "unnecessary_network_roundtrips"
+          ],
+          "description": "Root-cause category of the performance bottleneck."
+        },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file",
+            "line",
+            "function"
+          ],
+          "description": "Source code location where the bottleneck originates.",
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Relative file path in repository."
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-indexed line number in source file."
+            },
+            "function": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Name of the function or method."
+            }
+          }
+        },
+        "unit_ids": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Array of unit IDs from coverage ledger linked to this bottleneck.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "workflows": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Array of workflow IDs from measurements that exhibit this bottleneck.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "description": "Direct node pointers supporting this finding.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["workflow_id", "node_id"],
+            "properties": {
+              "workflow_id": { "type": "string", "minLength": 1 },
+              "node_id": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "probes": {
+          "type": "array",
+          "description": "Structured concurrency or scale probe experiments.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["workflow_id", "concurrency", "baseline_p50_ms", "loaded_p50_ms"],
+            "properties": {
+              "workflow_id": { "type": "string", "minLength": 1 },
+              "endpoint": { "type": "string" },
+              "concurrency": { "type": "integer", "minimum": 1 },
+              "baseline_p50_ms": { "type": "number", "minimum": 0.0 },
+              "loaded_p50_ms": { "type": "number", "minimum": 0.0 },
+              "scale": { "type": "string" },
+              "scale_factor": { "type": "number" },
+              "projected_ms": { "type": "number" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "description": "List of evidence citations referencing call tree nodes, code lines, or measurements.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "owned_ms",
+            "total_ms",
+            "workflow_share_pct",
+            "audit_share_pct",
+            "calls"
+          ],
+          "description": "Quantitative performance metrics captured for this bottleneck.",
+          "properties": {
+            "owned_ms": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Owned duration in milliseconds spent in finding frame excluding child ledger units."
+            },
+            "total_ms": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Total measured duration consumed by this finding in milliseconds."
+            },
+            "workflow_share_pct": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 100.0,
+              "description": "Percentage of own workflow duration consumed by this bottleneck."
+            },
+            "audit_share_pct": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 100.0,
+              "description": "Percentage of total audit duration consumed by this bottleneck."
+            },
+            "calls": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total number of calls executed across measured workflow runs or per run."
+            },
+            "per_run_calls": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "description": "Per-run invocation counts."
+            },
+            "total_calls": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total invocation count across all measured runs."
+            },
+            "calls_per_run": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Average number of invocations per single workflow execution."
+            },
+            "cpu_wait_attribution_basis": {
+              "type": "string",
+              "description": "Attribution model determining whether CPU and wait are additive."
+            },
+            "crossed_async_yield_points": {
+              "type": "boolean",
+              "description": "Whether execution crossed asynchronous yield points."
+            },
+            "cpu_ms": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0,
+              "description": "Active CPU processing time in milliseconds."
+            },
+            "wait_ms": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0,
+              "description": "Waiting time in milliseconds."
+            },
+            "p50_ms": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0,
+              "description": "50th percentile node duration in milliseconds."
+            },
+            "p95_ms": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0,
+              "description": "95th percentile node duration in milliseconds."
+            },
+            "cv": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0,
+              "description": "Coefficient of variation across measured iterations for this node."
+            },
+            "coefficient_of_variation": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.0,
+              "description": "Legacy alias for cv."
+            },
+            "n": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "workflow_p50_ms": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Parent workflow 50th percentile duration."
+            },
+            "workflow_cv": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Parent workflow coefficient of variation."
+            }
+          }
+        },
+        "provenance": {
+          "type": "string",
+          "enum": [
+            "measured",
+            "simulated",
+            "estimated"
+          ],
+          "description": "Provenance classification of finding headline evidence."
+        },
+        "root_cause": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Technical explanation of why the bottleneck occurs in the codebase."
+        },
+        "reproduction": {
+          "type": "string",
+          "description": "Context or input scenario under which the bottleneck is triggered."
+        },
+        "severity_rationale": {
+          "type": "string",
+          "description": "Justification for assigned impact and priority."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "needs_validation"
+          ],
+          "description": "Verification status of the finding."
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "result",
+            "reason"
+          ],
+          "properties": {
+            "result": {
+              "type": "string",
+              "enum": [
+                "confirmed",
+                "disproved",
+                "unstable",
+                "partially_confirmed"
+              ]
+            },
+            "reason": { "type": "string", "minLength": 1 },
+            "reruns": { "type": "integer", "minimum": 0 },
+            "node_cv": { "type": "number", "minimum": 0.0 }
+          }
+        },
+        "fix": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "summary",
+            "steps",
+            "expected_result",
+            "end_goal"
+          ],
+          "description": "Remediation plan for addressing the bottleneck.",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Concise summary of the recommended fix."
+            },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Ordered list of concrete, actionable remediation steps.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "prerequisites": {
+              "type": "array",
+              "description": "Prerequisites, migrations, or dependencies required before applying fix.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "risks": {
+              "type": "array",
+              "description": "Known risks, regressions, or behavioral changes.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "expected_result": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Projected latency improvement post-remediation."
+            },
+            "projection": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "basis": { "type": "string" },
+                "improvement_pct": { "type": "number" },
+                "projected_ms": { "type": "number" }
+              }
+            },
+            "expected_result_basis": {
+              "type": "string",
+              "enum": [
+                "measured_baseline_projection",
+                "rule_of_thumb"
+              ],
+              "description": "Methodological foundation for expected result."
+            },
+            "baseline_ref": {
+              "type": [
+                "string",
+                "object",
+                "null"
+              ],
+              "description": "Reference to node or measurement used as baseline."
+            },
+            "validation_method": {
+              "type": "string",
+              "description": "Procedure for verifying fix effectiveness after application."
+            },
+            "end_goal": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Target architectural state and system behavior after fix."
+            }
+          }
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "category",
+        "location",
+        "rationale",
+        "suggested_action"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "line", "function"],
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "line": { "type": "integer", "minimum": 1 },
+            "function": { "type": "string", "minLength": 1 }
+          }
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "suggested_action": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reviewed_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit_ids",
+        "workflow_id",
+        "reason"
+      ],
+      "properties": {
+        "unit_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "workflow_id": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
